@@ -1,0 +1,16 @@
+[Unit]
+Description=Hysteria2 to residential SOCKS5
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=/usr/local/bin/sing-box check -c /etc/sing-box/config.json
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,194 @@
+{
+  "override": {
+    "mode": "rule",
+    "log-level": "warning",
+    "mixed-port": 7890,
+    "allow-lan": false,
+    "bind-address": "127.0.0.1",
+    "external-controller": "127.0.0.1:9090",
+    "ipv6": true,
+    "routing-mark": "<ROUTING_MARK>",
+    "profile": {
+      "store-selected": true,
+      "store-fake-ip": true
+    },
+    "listeners": [
+      {
+        "name": "PUBLIC-HY2",
+        "type": "hysteria2",
+        "listen": "0.0.0.0",
+        "port": "<CN_PORT>",
+        "users": {
+          "client": "<CN_PASSWORD>"
+        },
+        "ignore-client-bandwidth": true,
+        "alpn": [
+          "h3"
+        ],
+        "certificate": "/opt/clash-for-linux/runtime/ingress-tls/server.crt",
+        "private-key": "/opt/clash-for-linux/runtime/ingress-tls/server.key"
+      }
+    ],
+    "proxy-providers": {
+      "ikuuu": {
+        "type": "http",
+        "url": "<IKUUU_SUBSCRIPTION_URL>",
+        "path": "./providers/ikuuu.yaml",
+        "interval": 3600,
+        "proxy": "DIRECT",
+        "header": {
+          "User-Agent": [
+            "Clash-Verge"
+          ]
+        }
+      }
+    },
+    "proxies": [
+      {
+        "name": "HY2-EXIT",
+        "type": "hysteria2",
+        "server": "<US_HOST>",
+        "port": "<US_PORT>",
+        "password": "<US_PASSWORD>",
+        "sni": "<US_SNI>",
+        "skip-cert-verify": false,
+        "dialer-proxy": "IKUUU",
+        "alpn": [
+          "h3"
+        ]
+      }
+    ],
+    "proxy-groups": [
+      {
+        "name": "IKUUU",
+        "type": "select",
+        "proxies": [
+          "REJECT"
+        ],
+        "use": [
+          "ikuuu"
+        ]
+      }
+    ],
+    "dns": {
+      "enable": true,
+      "listen": "127.0.0.1:1053",
+      "ipv6": false,
+      "enhanced-mode": "fake-ip",
+      "default-nameserver": [
+        "223.5.5.5",
+        "119.29.29.29"
+      ],
+      "proxy-server-nameserver": [
+        "223.5.5.5",
+        "119.29.29.29"
+      ],
+      "nameserver": [
+        "https://1.1.1.1/dns-query#HY2-EXIT"
+      ],
+      "nameserver-policy": {
+        "rule-set:private,direct": [
+          "https://dns.alidns.com/dns-query"
+        ],
+        "+.cn": [
+          "https://dns.alidns.com/dns-query"
+        ]
+      }
+    },
+    "tun": {
+      "stack": "gvisor",
+      "auto-route": true,
+      "auto-redirect": false,
+      "strict-route": true,
+      "dns-hijack": [
+        "any:53",
+        "tcp://any:53"
+      ],
+      "route-exclude-address": [
+        "10.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "fc00::/7",
+        "fe80::/10"
+      ]
+    },
+    "rule-providers": {
+      "private": {
+        "type": "http",
+        "behavior": "domain",
+        "format": "yaml",
+        "path": "./ruleset/private.yaml",
+        "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt",
+        "interval": 86400,
+        "proxy": "HY2-EXIT"
+      },
+      "direct": {
+        "type": "http",
+        "behavior": "domain",
+        "format": "yaml",
+        "path": "./ruleset/direct.yaml",
+        "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/direct.txt",
+        "interval": 86400,
+        "proxy": "HY2-EXIT"
+      },
+      "proxy": {
+        "type": "http",
+        "behavior": "domain",
+        "format": "yaml",
+        "path": "./ruleset/proxy.yaml",
+        "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt",
+        "interval": 86400,
+        "proxy": "HY2-EXIT"
+      },
+      "cncidr": {
+        "type": "http",
+        "behavior": "ipcidr",
+        "format": "yaml",
+        "path": "./ruleset/cncidr.yaml",
+        "url": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/cncidr.txt",
+        "interval": 86400,
+        "proxy": "HY2-EXIT"
+      }
+    },
+    "rules": [
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,0.0.0.0/8)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,10.0.0.0/8)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,100.64.0.0/10)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,127.0.0.0/8)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,169.254.0.0/16)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,172.16.0.0/12)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,192.168.0.0/16)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,198.18.0.0/15)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,224.0.0.0/4)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,240.0.0.0/4)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,<CN_PUBLIC_IPV4>/32)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR,<US_PUBLIC_IPV4>/32)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,::/128)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,::1/128)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,::ffff:0:0/96)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,fc00::/7)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,fe80::/10)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,ff00::/8)),REJECT",
+      "AND,((IN-NAME,PUBLIC-HY2),(RULE-SET,private)),REJECT",
+      "IP-CIDR,0.0.0.0/8,DIRECT,no-resolve",
+      "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+      "IP-CIDR,100.64.0.0/10,DIRECT,no-resolve",
+      "IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
+      "IP-CIDR,169.254.0.0/16,DIRECT,no-resolve",
+      "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+      "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+      "IP-CIDR,198.18.0.0/15,DIRECT,no-resolve",
+      "IP-CIDR6,::1/128,DIRECT,no-resolve",
+      "IP-CIDR6,fc00::/7,DIRECT,no-resolve",
+      "IP-CIDR6,fe80::/10,DIRECT,no-resolve",
+      "RULE-SET,private,DIRECT",
+      "RULE-SET,direct,DIRECT",
+      "DOMAIN-SUFFIX,cn,DIRECT",
+      "RULE-SET,proxy,HY2-EXIT",
+      "RULE-SET,cncidr,DIRECT",
+      "MATCH,HY2-EXIT"
+    ]
+  }
+}

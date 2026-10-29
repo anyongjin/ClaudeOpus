@@ -1,0 +1,39 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hysteria2-in",
+      "listen": "0.0.0.0",
+      "listen_port": "<US_PORT>",
+      "users": [
+        {
+          "name": "gateway",
+          "password": "<US_PASSWORD>"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "certificate_path": "<US_CERT_PATH>",
+        "key_path": "<US_KEY_PATH>"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "socks",
+      "tag": "upstream-socks",
+      "server": "<RES_HOST>",
+      "server_port": "<RES_PORT>",
+      "version": "5",
+      "username": "<RES_USERNAME>",
+      "password": "<RES_PASSWORD>"
+    }
+  ],
+  "route": {
+    "final": "upstream-socks"
+  }
+}
