@@ -1,0 +1,23 @@
+{
+  "runtime_dir": "/opt/clash-for-linux/runtime",
+  "core_binary": "/opt/clash-for-linux/runtime/bin/mihomo",
+  "production_service": "clash-for-linux.service",
+  "production_port": 7890,
+  "provider_path": "providers/ikuuu.yaml",
+  "group": "IKUUU",
+  "exit_proxy": "HY2-EXIT",
+  "exit_ip": "203.0.113.20",
+  "routing_mark": 6666,
+  "interface": "eth0",
+  "state_dir": "/var/lib/clash-chain-health",
+  "max_candidates": 8,
+  "workers": 3,
+  "budget_seconds": 145,
+  "short_urls": [
+    "https://probe.example.com/chain-probe/health",
+    "https://api.anthropic.com/"
+  ],
+  "stream_url": "https://probe.example.com/chain-probe/stream",
+  "stream_bytes": 12,
+  "stream_min_seconds": 4.5
+}

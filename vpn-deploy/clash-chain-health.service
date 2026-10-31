@@ -1,0 +1,14 @@
+[Unit]
+Description=Rank and verify residential HY2 airport first hops
+After=clash-for-linux.service
+Requisite=clash-for-linux.service
+ConditionPathExists=/opt/clash-for-linux/runtime/config.yaml
+ConditionPathExists=/etc/clash-chain-health.json
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/clash-for-linux/scripts/server-chain-health.py --config /etc/clash-chain-health.json --apply
+TimeoutStartSec=170s
+KillMode=control-group

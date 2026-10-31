@@ -1,0 +1,11 @@
+[Unit]
+Description=Evaluate airport quality every three minutes
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=3min
+AccuracySec=1s
+Unit=clash-chain-health.service
+
+[Install]
+WantedBy=timers.target

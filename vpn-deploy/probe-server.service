@@ -1,0 +1,29 @@
+[Unit]
+Description=Fixed HTTP and paced stream probes for VPN chain health
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/bin/python3 -B /opt/chain-probe/probe_server.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=96M
+TasksMax=16
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target
