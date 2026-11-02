@@ -11,7 +11,7 @@ AI 请求：电脑 Clash → 国内 Hysteria2 → ikuuu 首跳 → 美国 Hyster
 ```
 
 - 本机仅有一个专用 AI 组 `AI-US-VIA-CN`，唯一节点为国内入口 `CN-GATEWAY-HY2`，不设直连、机场或 SOCKS5 自动回退。
-- Claude / Anthropic、ChatGPT、Gemini 等列明 AI 服务走住宅链路；普通 Google、YouTube、GitHub 等继续使用普通机场节点。完整域名清单与优先级统一维护在[客户端模板](vpn-deploy/client-script.js)。
+- Claude / Anthropic、ChatGPT、Gemini 等列明 AI 服务走住宅链路；普通 Google、YouTube、GitHub、Perplexity（`perplexity.ai`、`pplx.ai`）等继续使用普通机场节点。完整域名清单与优先级统一维护在[客户端模板](vpn-deploy/client-script.js)。
 - 美国 VPS 是中转，住宅 SOCKS5 才是网站看到的最终出口。VPS 的美国 IP 不能替代住宅 IP；住宅代理不保证账号风控或地区权限。
 - 国内默认保留机场首跳。只有用户明确选择且实测可用时才改成国内直连美国，不以失败后自动直连作为恢复策略。
 

@@ -29,7 +29,7 @@ function main(config) {
     "claude.ai", "claude.com", "anthropic.com",
     "claudeusercontent.com", "claudeusercontent.net",
     "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com",
-    "chat.com", "sora.com", "x.ai", "grok.com", "perplexity.ai", "pplx.ai",
+    "chat.com", "sora.com", "x.ai", "grok.com",
     "huggingface.co", "hf.co", "copilot.microsoft.com",
     "copilot.cloud.microsoft", "githubcopilot.com", "copilot.github.com",
     "gemini.google.com", "gemini.google", "aistudio.google.com",
@@ -48,7 +48,8 @@ function main(config) {
   ];
   const google = ["google.com", "googleapis.com", "gstatic.com",
     "googleusercontent.com", "google.dev", "google", "youtube.com",
-    "youtu.be", "ytimg.com", "googlevideo.com", "ggpht.com", "withgoogle.com"];
+    "youtu.be", "ytimg.com", "googlevideo.com", "ggpht.com", "withgoogle.com",
+    "perplexity.ai", "pplx.ai"];
   const priority = ai.map(d => `DOMAIN-SUFFIX,${d},${group}`)
     .concat([`DOMAIN-REGEX,^([a-z0-9-]+-)?(aiplatform|discoveryengine)\\.googleapis\\.com$,${group}`])
     .concat(google.map(d => `DOMAIN-SUFFIX,${d},${normal}`))

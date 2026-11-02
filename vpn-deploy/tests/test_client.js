@@ -49,7 +49,7 @@ assert.deepEqual(migrated, result);
 assert.ok(!migrated["proxy-groups"].some(g => g.name === "CLAUDE-LOCKED"));
 assert.ok(!migrated.rules.some(r => r.includes("CLAUDE-LOCKED")));
 assert.equal(result.rules.filter(r =>
-  r.startsWith("DOMAIN-SUFFIX,") && r.endsWith(",AI-US-VIA-CN")).length, 56);
+  r.startsWith("DOMAIN-SUFFIX,") && r.endsWith(",AI-US-VIA-CN")).length, 54);
 
 for (const domain of [
   "claude.ai", "claude.com", "anthropic.com", "chatgpt.com", "openai.com",
