@@ -42,6 +42,13 @@ class RenderTests(unittest.TestCase):
         self.assertIsInstance(us['outbounds'][0]['server_port'], int)
         self.assertNotIn('enable', cn['override']['tun'])
 
+    def test_public_gateway_always_uses_us_after_private_rejections(self):
+        rules = self.module.build(self.inputs())['cn-mixin.yaml']['override']['rules']
+        force = rules.index('IN-NAME,PUBLIC-HY2,HY2-EXIT')
+        self.assertGreater(force, rules.index('AND,((IN-NAME,PUBLIC-HY2),(RULE-SET,private)),REJECT'))
+        self.assertLess(force, rules.index('RULE-SET,direct,DIRECT'))
+        self.assertLess(force, rules.index('DOMAIN-SUFFIX,cn,DIRECT'))
+
     def test_self_signed_requires_pin(self):
         data = self.inputs()
         data.update(US_TLS_MODE='self-signed', US_CERT_SHA256='')

@@ -50,7 +50,19 @@ function main(config) {
     "googleusercontent.com", "google.dev", "google", "youtube.com",
     "youtu.be", "ytimg.com", "googlevideo.com", "ggpht.com", "withgoogle.com",
     "perplexity.ai", "pplx.ai"];
-  const priority = ai.map(d => `DOMAIN-SUFFIX,${d},${group}`)
+  // The complete apple category includes regional sites, iCloud and Apple CDNs.
+  // Keep common roots explicit as well, including mainland China services.
+  const apple = ["apple.com", "apple.cn", "apple.com.cn", "apple",
+    "icloud.com", "icloud.com.cn", "icloud-content.com", "me.com", "mac.com",
+    "itunes.com", "itunes.apple.com", "mzstatic.com", "aaplimg.com",
+    "cdn-apple.com", "apzones.com", "apple-cloudkit.com", "apple-mapkit.com",
+    "applemusic.com", "appletv.com", "beatsbydre.com", "shazam.com",
+    // Upstream apple excludes the separate Apple Intelligence relay category.
+    "apple-relay.cloudflare.com", "apple-relay.fastly-edge.com",
+    "apple-relay.mask.apple-dns.net"];
+  const priority = apple.map(d => `DOMAIN-SUFFIX,${d},${group}`)
+    .concat([`GEOSITE,apple,${group}`])
+    .concat(ai.map(d => `DOMAIN-SUFFIX,${d},${group}`))
     .concat([`DOMAIN-REGEX,^([a-z0-9-]+-)?(aiplatform|discoveryengine)\\.googleapis\\.com$,${group}`])
     .concat(google.map(d => `DOMAIN-SUFFIX,${d},${normal}`))
     .concat([`GEOSITE,google,${normal}`]);

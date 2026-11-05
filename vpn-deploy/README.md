@@ -19,7 +19,8 @@
 | `cn-mixin.template.json` | 国内 `override`，含认证 HY2、首跳、美国出口、DNS、规则和仅限公共入口的内部访问拒绝 |
 | `us-sing-box.template.json` | 美国最小 HY2 → SOCKS5，不含备用 DIRECT，也不对客户端开放住宅凭据 |
 | `us-sing-box.service` | 新部署 systemd 模板，按实际 binary/config 路径适配；官方安装已有单元就复用，不创建重复实例 |
-| `client-script.js` | 完整全局增强模板，未渲染前不可直接启用；AI域名和普通Google边界的单一维护位置 |
+| `client-script.js` | 完整全局增强模板，未渲染前不可直接启用；AI/Apple 美国专线及普通 Google 边界的维护位置 |
+| `us-route.py` | macOS Clash Verge Rev 追加/删除美国出口域名命令；持久保存全局脚本并校验、备份、热加载当前配置 |
 | `chain_health.py`、`chain-health.example.json` | 国内机场质量巡检及非敏感参数示例；独立探测完整 HY2/住宅链路，不自动直连兜底 |
 | `clash-chain-health.service`、`clash-chain-health.timer` | 三分钟巡检单元模板，路径和生产服务名须按现场适配 |
 | `probe_server.py`、`probe-server.service`、`probe-nginx.*.conf` | 美国自有 HTTPS 健康及定速流探测端点，不依赖公共 drip 服务 |
@@ -38,6 +39,40 @@
 - 分发目录只保留模板和测试。渲染结果、输入、日志和私钥放在仓库外；禁止上传到公开仓库或第三方转换网站。
 - 工具在 POSIX 上创建目录700、文件600。Windows 的 chmod 不等于完整 ACL 防护，AI 必须额外设置并验证只允许目标用户/必要管理员访问；不把权限测试结果推广到所有平台。
 - 生成器不读取用户现有 `.env`、Clash 目录或 SSH 凭据，也不自动覆盖现有部署。未知字段保留在私有解析结果但不会自动变为安装行为。
+
+## 本机追加美国出口站点（macOS Clash Verge Rev）
+
+已部署专用组 `AI-US-VIA-CN`，且其唯一节点为 `CN-GATEWAY-HY2` 时，在仓库根目录执行：
+
+```sh
+# 根域名同时匹配所有子域名，可一次添加多个。
+python3 vpn-deploy/us-route.py add example.com another.com
+# 查看该命令管理的额外规则，不包含原全局脚本已有的基础规则。
+python3 vpn-deploy/us-route.py list
+# 删除额外规则，并立即重载；基础脚本已有的规则需编辑基础脚本。
+python3 vpn-deploy/us-route.py remove example.com
+# 按完整 geosite 类别添加，例如 Apple（要求本地数据包含该类）。
+python3 vpn-deploy/us-route.py add --geosite apple
+# 不改规则清单，重新应用。
+python3 vpn-deploy/us-route.py apply
+```
+
+域名不要带协议、路径或通配符；登录、静态资源或 API 使用独立根域名时，需要一并添加。规则写入 `profiles/Script.js` 末尾的托管区，刷新订阅和重启应用会继续生效。手工编辑原脚本时保留此托管区。命令只操作本机，国内中转必须已具备模板中的 `IN-NAME,PUBLIC-HY2,HY2-EXIT`，否则国内规则仍可能将已选定美国专线的站点改为直连。
+
+默认自动按当前 macOS 用户查找 Clash Verge Rev 数据目录和服务 Unix socket，使用应用内置 Mihomo、现有 Node.js 和 curl，不需要 Python 第三方包。自定义安装可传 `--config-dir DIR --socket PATH --core PATH`；不会自动寻找其他 Clash 客户端或开启控制器端口。
+
+每次应用先将原脚本、原运行配置和校验日志保存在 Clash 数据目录的 `backups/us-route-时间/`，目录 700、文件 600；校验失败不覆盖，热加载或规则验证失败自动恢复原文件并尝试恢复内核配置。重载可能重建代理传输，新规则作用于新连接，已有长连接需要重新连接。不要将含节点凭据的备份上传到仓库。
+
+手动设置时，在 Clash Verge Rev「订阅 → 全局扩展脚本」中，将下面逻辑加在现有 `main` 函数的 `return config` **之前**，保存后重新应用当前配置：
+
+```js
+config.rules = [
+  "DOMAIN-SUFFIX,example.com,AI-US-VIA-CN",
+  ...config.rules.filter(r => r !== "DOMAIN-SUFFIX,example.com,AI-US-VIA-CN")
+];
+```
+
+在「连接」中检查新连接的规则与链路：本机应命中 `AI-US-VIA-CN → CN-GATEWAY-HY2`，国内中转应命中 `PUBLIC-HY2 → HY2-EXIT`。Apple 默认同时使用完整 `GEOSITE,apple`、常用域名和独立 Apple Intelligence 中继规则，优先于原订阅的直连规则；geosite 只覆盖本地数据版本已知的域名。
 
 ## 国内首跳质量巡检
 

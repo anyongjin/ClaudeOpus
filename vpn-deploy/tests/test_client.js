@@ -49,7 +49,22 @@ assert.deepEqual(migrated, result);
 assert.ok(!migrated["proxy-groups"].some(g => g.name === "CLAUDE-LOCKED"));
 assert.ok(!migrated.rules.some(r => r.includes("CLAUDE-LOCKED")));
 assert.equal(result.rules.filter(r =>
-  r.startsWith("DOMAIN-SUFFIX,") && r.endsWith(",AI-US-VIA-CN")).length, 54);
+  r.startsWith("DOMAIN-SUFFIX,") && r.endsWith(",AI-US-VIA-CN")).length, 78);
+
+const appleDirect = generate({...base, rules: [
+  "DOMAIN-SUFFIX,apple.com,DIRECT", "GEOSITE,apple-cn,DIRECT", ...base.rules
+]});
+for (const domain of ["apple.com", "apple.cn", "apple.com.cn", "icloud.com",
+  "icloud.com.cn", "icloud-content.com", "mzstatic.com", "cdn-apple.com",
+  "aaplimg.com", "apple", "itunes.com", "applemusic.com", "shazam.com",
+  "apple-relay.cloudflare.com", "apple-relay.fastly-edge.com",
+  "apple-relay.mask.apple-dns.net"]) {
+  const rule = `DOMAIN-SUFFIX,${domain},AI-US-VIA-CN`;
+  assert.ok(appleDirect.rules.includes(rule), domain);
+  assert.ok(appleDirect.rules.indexOf(rule) < appleDirect.rules.indexOf("GEOSITE,apple-cn,DIRECT"));
+}
+assert.ok(appleDirect.rules.indexOf("GEOSITE,apple,AI-US-VIA-CN") <
+  appleDirect.rules.indexOf("DOMAIN-SUFFIX,apple.com,DIRECT"));
 
 for (const domain of [
   "claude.ai", "claude.com", "anthropic.com", "chatgpt.com", "openai.com",

@@ -172,6 +172,7 @@
       "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,fe80::/10)),REJECT",
       "AND,((IN-NAME,PUBLIC-HY2),(IP-CIDR6,ff00::/8)),REJECT",
       "AND,((IN-NAME,PUBLIC-HY2),(RULE-SET,private)),REJECT",
+      "IN-NAME,PUBLIC-HY2,HY2-EXIT",
       "IP-CIDR,0.0.0.0/8,DIRECT,no-resolve",
       "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
       "IP-CIDR,100.64.0.0/10,DIRECT,no-resolve",

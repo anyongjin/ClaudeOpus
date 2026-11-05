@@ -11,7 +11,7 @@ AI 请求：电脑 Clash → 国内 Hysteria2 → ikuuu 首跳 → 美国 Hyster
 ```
 
 - 本机仅有一个专用 AI 组 `AI-US-VIA-CN`，唯一节点为国内入口 `CN-GATEWAY-HY2`，不设直连、机场或 SOCKS5 自动回退。
-- Claude / Anthropic、ChatGPT、Gemini 等列明 AI 服务走住宅链路；普通 Google、YouTube、GitHub、Perplexity（`perplexity.ai`、`pplx.ai`）等继续使用普通机场节点。完整域名清单与优先级统一维护在[客户端模板](vpn-deploy/client-script.js)。
+- Claude / Anthropic、ChatGPT、Gemini 等列明 AI 服务和 Apple 全类域名（含中国站、iCloud、App Store、更新/CDN 和 Apple Intelligence 中继）走美国住宅链路；普通 Google、YouTube、GitHub、Perplexity（`perplexity.ai`、`pplx.ai`）等继续使用普通机场节点。完整域名清单与优先级统一维护在[客户端模板](vpn-deploy/client-script.js)。
 - 美国 VPS 是中转，住宅 SOCKS5 才是网站看到的最终出口。VPS 的美国 IP 不能替代住宅 IP；住宅代理不保证账号风控或地区权限。
 - 国内默认保留机场首跳。只有用户明确选择且实测可用时才改成国内直连美国，不以失败后自动直连作为恢复策略。
 
@@ -141,7 +141,7 @@ openssl x509 -in '<本端证书路径>' -outform DER | openssl dgst -sha256
 
 - `HY2-EXIT` 的 `dialer-proxy` 是 `IKUUU`；国外业务规则指向 `HY2-EXIT`，不接反，不直接把业务交给机场，不用过时 relay 组替代。
 - 国内 DNS 用 fake-ip；代理服务器解析独立于链路，国内域名国内解析，国外 DoH 经美国出口。模板关闭 DNS AAAA，但主机/客户端 IPv6 防绕过须另测。
-- 顺序为公共入站内部目标拒绝 → 必要 TUN 回包例外 → 主机私网/国内域名直连 → 明确代理域名 → 国内地址段直连 → `MATCH,HY2-EXIT`。显式代理域名先于国内 IP 规则。
+- 顺序为公共入站内部目标拒绝 → 专用 `PUBLIC-HY2` 入口固定 `HY2-EXIT` → 必要 TUN 回包例外 → 主机私网/国内域名直连 → 明确代理域名 → 国内地址段直连 → `MATCH,HY2-EXIT`。客户端已选定美国出口的流量不再被国内 Apple/CDN 直连规则改道；主机本身的流量仍按后续规则分流。
 - 公共入口拒绝回环、私有/保留网段、云元数据、private 域名、服务器管理/入口地址，并覆盖 IPv4/IPv6。模板拒绝仅限公共入站，保留主机正常运维；补齐现场全局 IPv6、管理网段和平台元数据域名，测试域名解析为私网地址的场景。
 
 默认只建立 Hysteria2 入口。若用户确需国内 SOCKS5，AI 另加独立认证 listener、访问拒绝、防火墙和回包保护；默认 TCP-only，不以明文 SOCKS5 替代 Hysteria2 身份保护，也不加入本机 AI 自动回退。
@@ -171,9 +171,19 @@ AI 为本次部署生成完整链路巡检与 systemd oneshot/timer，文件随�
 2. 在客户端实际的全局脚本入口应用**渲染后的** `client-script.js`。不要直接导入仍含占位符的分发模板，不改写订阅原始 YAML，不仅修改临时生成配置。
 3. 保留规则模式；按平台授权 TUN、自动路由及 DNS 接管。系统代理可用于兼容，但不能代替 UDP/所有程序的透明接管。严格路由是否有效以本平台支持和实测为准。
 4. 从原始订阅重新生成配置，校验只有一个网关节点、一个单节点 AI 组，普通机场及业务组保留、原默认选择不变；再生成一次须幂等。
-5. 使用客户端实际 Mihomo 校验候选配置，确认 `GEOSITE,google` 数据存在；通过现有控制器加载，不为此新开公开管理端口。重启应用、刷新订阅后重新检查，并为新连接做分流测试。
+5. 使用客户端实际 Mihomo 校验候选配置，确认 `GEOSITE,google` 和 `GEOSITE,apple` 数据存在；通过现有控制器加载，不为此新开公开管理端口。Apple 专线规则必须排在订阅的 Apple/国内直连规则之前。重启应用、刷新订阅后重新检查，并为新连接做分流测试。
 
 Google 搜索、账号、Gmail、Drive、普通 Cloud、YouTube 等走默认机场；Gemini、AI Studio、NotebookLM、Vertex 模型 API 等独立 AI 域名先匹配 AI 专线。共享登录和资源域名无法按浏览器父页面拆分；同一主机的不同 HTTPS 路径也不能靠域名规则区分。
+
+Apple 使用完整 `GEOSITE,apple` 类别，并显式覆盖常用根域名及 Apple Intelligence 的专属中继主机；不使用整个 Cloudflare/Fastly 域名来匹配 Apple。上游分类来源：[apple](https://github.com/v2fly/domain-list-community/blob/master/data/apple)、[apple-intelligence](https://github.com/v2fly/domain-list-community/blob/master/data/apple-intelligence)。规则仅能识别清单覆盖的主机，新服务仍需补充域名或更新 geosite 数据。
+
+macOS Clash Verge Rev 后续添加站点，可在仓库目录执行下列命令；根域名包含其全部子域名，不带 `https://`、路径或 `*`。命令保存全局脚本、备份并校验候选配置、热加载当前内核，并核对规则顺序，无需重启应用。具体参数及手工操作见 [配套说明](vpn-deploy/README.md#本机追加美国出口站点macos-clash-verge-rev)。
+
+```sh
+python3 vpn-deploy/us-route.py add example.com another.com
+python3 vpn-deploy/us-route.py list
+python3 vpn-deploy/us-route.py remove example.com
+```
 
 配置目录、socket、命名管道和服务名由实际安装发现，不照抄另一台机器的用户名/用户 ID。AI 需交付本次实际入口与文件，不让新用户自行猜测。
 
@@ -186,7 +196,7 @@ Google 搜索、账号、Gmail、Drive、普通 Cloud、YouTube 等走默认机�
 | 住宅 | 美国 VPS 直测认证、分配 IP/地区、重建连接稳定性；住宅类型另与供应商及适当外部资料核对 |
 | 美国入口 | 独立客户端使用美国 Hysteria2，出口与住宅直测一致，错误认证和错误 TLS 身份被拒绝 |
 | 国内完整链 | 国内入口经机场后出口仍一致，多目标/冷启动通过；配置、必要日志及抓包交叉核对首跳 |
-| 本机分流 | Claude、ChatGPT、Gemini 等走单 AI 组；普通 Google、YouTube、GitHub 走默认机场；国内/内网保留直连 |
+| 本机分流 | Claude、ChatGPT、Gemini 和 Apple/iCloud/CDN/Intelligence 等走单 AI 组及美国出口；普通 Google、YouTube、GitHub 走默认机场；国内/内网保留直连 |
 | 公共入口防护 | 国内错误密码/指纹、无认证、回环控制器、元数据、内部 IP 和解析到私网的域名请求被拒绝 |
 | 应用 UDP | 套餐支持时，从独立客户端经整链发真正 UDP 请求并收到返回；不支持明确标记仅 TCP，不能用 HTTPS 代替 |
 | 双栈/TUN | 无显式代理时按预期分流；硬编码 IPv6 不得绕过 AI 路线，容器/绑定网卡等特殊应用另测 |
