@@ -277,6 +277,33 @@ class ChainHealthTests(unittest.TestCase):
         self.assertEqual([result.name for result in selected], ['faster'])
 
 
+    def test_complete_small_stream_does_not_qualify_incomplete_bulk_download(self):
+        current = self.result('current', 100)
+        current.bulk_ok = False
+        candidate = self.result('candidate', 500)
+        candidate.bulk_ok = True
+        self.assertFalse(self.module.qualified(current))
+        self.assertEqual(self.decide([current, candidate]).target, 'candidate')
+
+    def test_bulk_transfer_time_contributes_to_score(self):
+        result = self.result('node', 100)
+        result.bulk_seconds = 2
+        self.assertEqual(self.module.score(result), 2100)
+
+    def test_healthy_production_is_not_emergency_switched_on_isolated_failure(self):
+        current = self.result('current', 100, stream_ok=False)
+        current.production_ok = True
+        decision = self.decide([current, self.result('candidate', 500)])
+        self.assertIsNone(decision.target)
+        self.assertEqual(decision.reason, 'production-healthy-current-unverified')
+
+    def test_production_failure_overrides_healthy_isolated_current(self):
+        current = self.result('current', 100)
+        current.production_ok = False
+        self.assertEqual(self.decide([current, self.result('candidate', 500)]).target,
+                         'candidate')
+
+
 class TransportAndSwitchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -374,6 +401,28 @@ class TransportAndSwitchTests(unittest.TestCase):
             [],
         )
         api.request.assert_called_once_with('/connections')
+
+    def test_preflight_elapsed_time_cannot_consume_full_verification_rollback_reserve(self):
+        api, _ = self.api()
+        settings = dict(self.settings, short_urls=['https://a.test/', 'https://b.test/'],
+                        bulk_url='https://a.test/', bulk_timeout_seconds=12)
+        now = [1000.0]
+
+        def group(name):
+            now[0] += 4
+            return {'now': 'old'}
+
+        def matching(*args):
+            now[0] += 4
+            return ['old-carrier']
+
+        api.group.side_effect = group
+        with patch.object(self.module.time, 'monotonic', side_effect=lambda: now[0]), \
+                patch.object(self.module, 'matching_transports', side_effect=matching):
+            switched = self.module.switch_verified(api, settings, 'old', 'new', 443, 1053)
+        self.assertFalse(switched)
+        api.select.assert_not_called()
+        api.request.assert_not_called()
 
     def test_selection_changed_before_switch_is_not_overwritten(self):
         api, selection = self.api(initial='external-choice')
@@ -665,6 +714,230 @@ class CurlProbeTests(unittest.TestCase):
         result, details = self.probe('200 0.2 12', 0)
         self.assertEqual(result, (False, 0.2))
         self.assertEqual(details, {'http_status': '200', 'bytes': 12, 'curl_exit': 0})
+
+
+class BulkProbeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    def settings(self):
+        return {'bulk_url': 'https://platform.example.test/asset.js',
+                'bulk_bytes': 162537, 'bulk_timeout_seconds': 10}
+
+    def test_incomplete_http_200_bulk_download_fails(self):
+        details = {}
+        with patch.object(self.module.subprocess, 'run',
+                          return_value=Mock(stdout='200 10.0 34487', returncode=28)):
+            result = self.module.bulk_probe('http://127.0.0.1:7890', self.settings(),
+                                           self.module.time.monotonic() + 20, details)
+        self.assertEqual(result, (False, 10.0))
+        self.assertEqual(details['bytes'], 34487)
+        self.assertEqual(details['seconds'], 10.0)
+
+    def test_bulk_probe_accepts_only_complete_http_200_success(self):
+        for status, size, code, expected in [
+                ('200', 162537, 0, True), ('200', 162536, 0, False),
+                ('404', 162537, 0, False), ('200', 162537, 18, False)]:
+            with self.subTest(status=status, size=size, code=code), \
+                    patch.object(self.module.subprocess, 'run',
+                                 return_value=Mock(stdout=f'{status} 0.8 {size}', returncode=code)):
+                result = self.module.bulk_probe('http://127.0.0.1:7890', self.settings(),
+                                               self.module.time.monotonic() + 20, {})
+                self.assertEqual(result, (expected, 0.8))
+
+    def test_minimum_size_accepts_complete_dynamic_page_and_rejects_small_or_partial(self):
+        settings = dict(self.settings(), bulk_min_bytes=65536)
+        settings.pop('bulk_bytes')
+        for size, code, expected in [(172142, 0, True), (65535, 0, False),
+                                     (172142, 28, False)]:
+            with self.subTest(size=size, code=code), \
+                    patch.object(self.module.subprocess, 'run',
+                                 return_value=Mock(stdout=f'200 1.0 {size}', returncode=code)):
+                result = self.module.bulk_probe('http://127.0.0.1:7890', settings,
+                                               self.module.time.monotonic() + 20, {})
+                self.assertEqual(result, (expected, 1.0))
+
+    def test_bulk_size_modes_are_mutually_exclusive_and_minimum_is_bounded(self):
+        for change in [{'bulk_min_bytes': 65536}, {'bulk_bytes': None, 'bulk_min_bytes': 0},
+                       {'bulk_bytes': None, 'bulk_min_bytes': 100000000}]:
+            settings = dict(self.settings(), **change)
+            if settings['bulk_bytes'] is None:
+                settings.pop('bulk_bytes')
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.module.validate_bulk_settings(settings)
+
+    def test_expired_budget_does_not_launch_curl(self):
+        with patch.object(self.module.subprocess, 'run') as run:
+            result = self.module.bulk_probe('http://127.0.0.1:7890', self.settings(),
+                                           self.module.time.monotonic() - 1, {})
+        self.assertEqual(result, (False, 0.0))
+        run.assert_not_called()
+
+    def test_production_full_check_requires_bulk_but_short_recovery_does_not(self):
+        settings = dict(self.settings(), short_urls=['https://a.test/', 'https://b.test/'],
+                        stream_url='https://a.test/stream')
+        with patch.object(self.module, 'curl_probe', return_value=(True, 6)), \
+                patch.object(self.module, 'bulk_probe', return_value=(False, 10)) as bulk:
+            self.assertFalse(self.module.production_check(settings, 100))
+            self.assertTrue(self.module.production_check(settings, 100, with_stream=False))
+        bulk.assert_called_once()
+
+    def test_bulk_settings_reject_credentials_non_https_and_unbounded_values(self):
+        for change in [{'bulk_url': 'http://example.test/a'},
+                       {'bulk_url': 'https://user:password@example.test/a'},
+                       {'bulk_url': 'https:///a'}, {'bulk_bytes': 0},
+                       {'bulk_bytes': 100000000}, {'bulk_timeout_seconds': 1000}]:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.module.validate_bulk_settings(dict(self.settings(), **change))
+
+    def test_bulk_settings_are_optional(self):
+        self.module.validate_bulk_settings({})
+
+
+class IsolatedBulkTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    def test_finalist_small_stream_pass_does_not_hide_incomplete_bulk(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = {'probe_dir': directory, 'routing_mark': 6666, 'interface': 'eth0',
+                        'exit_ip': '192.0.2.1', 'core_binary': '/unused/mihomo',
+                        'short_urls': ['https://a.test/', 'https://b.test/'],
+                        'stream_url': 'https://a.test/stream', 'bulk_url': 'https://a.test/asset',
+                        'bulk_bytes': 162537}
+            process = Mock()
+            process.poll.return_value = None
+            with patch.object(self.module.subprocess, 'Popen', return_value=process), \
+                    patch.object(self.module.socket, 'create_connection') as connection, \
+                    patch.object(self.module, 'stop_process'), \
+                    patch.object(self.module, 'curl_probe', side_effect=[(True, .1), (True, .1),
+                                                                       (True, 6)]), \
+                    patch.object(self.module, 'bulk_probe', return_value=(False, 10)):
+                connection.return_value.__enter__ = Mock()
+                connection.return_value.__exit__ = Mock()
+                result = self.module.isolated_probe(
+                    'candidate', {'name': 'candidate', 'type': 'ss'},
+                    {'name': 'HY2-EXIT', 'type': 'hysteria2'}, {}, settings,
+                    self.module.time.monotonic() + 30, with_stream=True)
+            self.assertTrue(result.stream_ok)
+            self.assertFalse(result.bulk_ok)
+            self.assertFalse(self.module.qualified(result))
+
+    def test_enabled_bulk_probe_cannot_qualify_after_budget_expires(self):
+        result = self.module.isolated_probe(
+            'candidate', {}, {}, {}, {'bulk_url': 'https://a.test/'},
+            self.module.time.monotonic() - 1, with_stream=True)
+        self.assertFalse(result.bulk_ok)
+        self.assertFalse(self.module.qualified(result))
+
+
+class BudgetTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    def settings(self):
+        return {'short_urls': ['https://a.test/', 'https://b.test/'],
+                'bulk_url': 'https://a.test/', 'bulk_min_bytes': 65536,
+                'bulk_timeout_seconds': 12, 'budget_seconds': 145, 'workers': 3}
+
+    def test_deployed_budget_covers_full_probe_setup_controller_and_rollback(self):
+        budgets = self.module.validate_run_budget(self.settings())
+        self.assertEqual(budgets, {'short': 14, 'full': 33, 'isolated': 37,
+                                  'switch': 53, 'minimum': 137})
+        # Advance through worst-case production, one parallel sweep, and full finalists.
+        now = 1000.0
+        deadline = now + 145
+        now += budgets['full']
+        now += budgets['short']
+        now += budgets['isolated']
+        self.assertGreaterEqual(deadline - now, budgets['switch'])
+        now += budgets['full'] + 8  # Production switch verification and controller work.
+        self.assertGreaterEqual(deadline - now, 12)  # Rollback remains available.
+
+    def test_previous_fixed_reservation_cannot_fit_candidate_confirmation(self):
+        budgets = self.module.probe_budgets(self.settings())
+        self.assertLess(45 - 25, budgets['isolated'])
+        self.assertLess(25, budgets['full'] + 12)
+
+    def test_large_bulk_timeout_requires_more_than_supported_145_seconds(self):
+        settings = dict(self.settings(), bulk_timeout_seconds=15)
+        with self.assertRaisesRegex(ValueError, 'minimum_seconds=146'):
+            self.module.validate_run_budget(settings)
+
+    def test_lower_concurrency_is_rejected_when_full_recovery_cannot_fit(self):
+        with self.assertRaisesRegex(ValueError, 'minimum_seconds=174'):
+            self.module.validate_run_budget(dict(self.settings(), workers=2))
+
+
+class ProductionPathTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    def run_monitor(self, checks, budget_seconds=145, current_stream_ok=True):
+        settings = dict(runtime_dir='/runtime', production_service='clash.service',
+                        exit_proxy='HY2-EXIT', group='IKUUU', provider_path='provider.yaml',
+                        budget_seconds=budget_seconds)
+        runtime = {'proxies': [{'name': 'HY2-EXIT', 'type': 'hysteria2',
+                                'dialer-proxy': 'IKUUU', 'port': 443}]}
+        provider = {'proxies': [{'name': name, 'type': 'ss'} for name in ['current', 'candidate']]}
+        api = Mock()
+        api.group.return_value = {'now': 'current', 'all': ['current', 'candidate']}
+
+        def probe(name, node, exit_proxy, runtime, settings, deadline, with_stream=False):
+            stream_ok = current_stream_ok if name == 'current' else True
+            return self.module.ProbeResult(name, [100 if name == 'current' else 500] * 2,
+                                           stream_ok=stream_ok if with_stream else None)
+
+        with patch.object(self.module.subprocess, 'run', return_value=Mock(returncode=0)), \
+                patch.object(self.module, 'load_yaml', side_effect=[runtime, provider]), \
+                patch.object(self.module, 'Controller', return_value=api), \
+                patch.object(self.module, 'production_check', side_effect=checks) as production, \
+                patch.object(self.module, 'isolated_probe', side_effect=probe), \
+                patch.object(self.module, 'log') as log:
+            self.module.run(settings, {}, apply=False)
+        return production, log
+
+    def test_incompatible_60_second_budget_is_rejected_explicitly(self):
+        with self.assertRaisesRegex(ValueError, 'minimum_seconds=101'):
+            self.run_monitor([False], budget_seconds=60)
+
+    def test_scan_preserves_derived_full_verification_and_rollback_budget(self):
+        start = self.module.time.monotonic()
+        production, _ = self.run_monitor([True])
+        scan_deadline = production.call_args.args[1]
+        self.assertGreaterEqual(scan_deadline, start + 145 - 41)
+        self.assertLessEqual(scan_deadline, self.module.time.monotonic() + 145 - 41)
+
+    def test_confirmed_production_failure_triggers_recovery_despite_isolated_success(self):
+        production, log = self.run_monitor([False, False])
+        self.assertEqual(production.call_count, 2)
+        decisions = [entry.kwargs for entry in log.call_args_list
+                     if entry.args == ('decision',)]
+        self.assertEqual(decisions[0]['target'], 'candidate')
+        self.assertEqual(decisions[0]['reason'], 'failure-recovery')
+
+    def test_transient_production_failure_does_not_force_switch(self):
+        production, log = self.run_monitor([False, True])
+        self.assertEqual(production.call_count, 2)
+        decisions = [entry.kwargs for entry in log.call_args_list
+                     if entry.args == ('decision',)]
+        self.assertIsNone(decisions[0]['target'])
+
+    def test_actual_healthy_path_overrides_one_failed_isolated_current(self):
+        production, log = self.run_monitor([True], current_stream_ok=False)
+        self.assertEqual(production.call_count, 1)
+        decisions = [entry.kwargs for entry in log.call_args_list
+                     if entry.args == ('decision',)]
+        self.assertIsNone(decisions[0]['target'])
+        self.assertEqual(decisions[0]['reason'], 'production-healthy-current-unverified')
+
+    def test_healthy_production_is_checked_once(self):
+        production, _ = self.run_monitor([True])
+        self.assertEqual(production.call_count, 1)
 
 
 if __name__ == '__main__':

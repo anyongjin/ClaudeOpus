@@ -19,5 +19,8 @@
   ],
   "stream_url": "https://probe.example.com/chain-probe/stream",
   "stream_bytes": 12,
-  "stream_min_seconds": 4.5
+  "stream_min_seconds": 4.5,
+  "bulk_url": "https://platform.claude.com/",
+  "bulk_min_bytes": 65536,
+  "bulk_timeout_seconds": 12
 }
